@@ -84,7 +84,6 @@ class Graph:
         self.__node_exists(start, end)
         try:
             cache = self.__cache[start]
-            print('cache')
             return self.__backtrace(start, end, cache) if backtrace else cache
         except KeyError:
             unvisited_nodes = self.__get_initial_unvisited()
