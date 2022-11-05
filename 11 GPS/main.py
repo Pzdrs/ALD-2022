@@ -7,13 +7,23 @@ class Graph:
     _nodes: tuple[str] = None
     _matrix = None
 
+    __cache = None
+
     def __init__(self, nodes, adj_matrix) -> None:
         self._nodes = nodes
         self._matrix = adj_matrix
+        self.__cache = {}
+
+    def __invalidate_cache(self):
+        self.__cache.clear()
+
+    def __node_exists(self, *nodes):
+        for node in nodes:
+            if node not in self._nodes:
+                raise ValueError(f'Unknown node "{node}"')
 
     def __get_node_index(self, node):
-        if node not in self._nodes:
-            raise ValueError(f'Unknown node "{node}"')
+        self.__node_exists(node)
         return self._nodes.index(node)
 
     def __get_node_connections(self, node):
@@ -49,11 +59,10 @@ class Graph:
         path_segment = final
         while True:
             full_path.append(path_segment[1])
+            if path_segment[1] == start:
+                break
             path_segment = paths_dict[path_segment[1]]
 
-            if path_segment[1] == start:
-                full_path.append(path_segment[1])
-                break
         # reverse the path because we backtrace from the end, and we want the path starting from the beginning node
         full_path.reverse()
         return tuple(full_path), final[0]
@@ -72,65 +81,76 @@ class Graph:
         return neighbors
 
     def dijkstra(self, start, end, backtrace=False, debug=False):
-        unvisited_nodes = self.__get_initial_unvisited()
-        queue = PriorityQueue()
-        # prefill the queue, starting node with cost 0, others with infinity
-        for node in self._nodes:
-            queue.put((0 if node == start else math.inf, (node,)))
+        self.__node_exists(start, end)
+        try:
+            cache = self.__cache[start]
+            print('cache')
+            return self.__backtrace(start, end, cache) if backtrace else cache
+        except KeyError:
+            unvisited_nodes = self.__get_initial_unvisited()
+            queue = PriorityQueue()
+            # prefill the queue, starting node with cost 0, others with infinity
+            for node in self._nodes:
+                queue.put((0 if node == start else math.inf, (node, node if node == start else None)))
 
-        # initial state
-        if debug:
-            print("------")
-            print(unvisited_nodes)
-            print(queue.queue)
-            print("------", end='\n\n')
+            # initial state
+            if debug:
+                print("------")
+                print(unvisited_nodes)
+                print(queue.queue)
+                print("------", end='\n\n')
 
-        # this list holds all the mapped nodes
-        path_map = []
-        while unvisited_nodes:
-            current_node = queue.get()
-            path_map.append((current_node[0], *current_node[1]))
-            if debug:
-                print('current node: ' + current_node[1][0], ' | ', str(current_node))
-                print('current queue: ' + str(queue.queue))
-            neighbors = self._get_neighboring_nodes(
-                current_node[1][0],
-                exclude=list(set(self._nodes) - set(unvisited_nodes))
-            )
-            if debug:
-                print("neighbors: " + str(neighbors))
-            for neighbor in neighbors:
+            # this list holds all the mapped nodes
+            path_map = []
+            while unvisited_nodes:
+                current_node = queue.get()
+                path_map.append((current_node[0], *current_node[1]))
                 if debug:
-                    print('neighbor: ' + neighbor[0])
-                new_queue = PriorityQueue()
-                for queue_node in queue.queue:
-                    if queue_node[1][0] == neighbor[0]:
-                        # od zacatku k neighbor
-                        proposed_new_cost = current_node[0] + neighbor[1]
-                        if debug:
-                            print('current cost to ' + neighbor[0], queue_node[0])
-                            print('cost from me to ' + neighbor[0], neighbor[1])
-                            print('cost from beginning to me', current_node[0])
-                            print('proposed cost from beginning to ' + neighbor[0], current_node[0] + neighbor[1])
-                            print('is it worth to change route? ', current_node[0] + neighbor[1] < queue_node[0])
-                        if proposed_new_cost < queue_node[0]:
-                            new_queue.put((proposed_new_cost, (queue_node[1][0], current_node[1][0])))
+                    print('current node: ' + current_node[1][0], ' | ', str(current_node))
+                    print('current queue: ' + str(queue.queue))
+                neighbors = self._get_neighboring_nodes(
+                    current_node[1][0],
+                    exclude=list(set(self._nodes) - set(unvisited_nodes))
+                )
+                if debug:
+                    print("neighbors: " + str(neighbors))
+                for neighbor in neighbors:
+                    if debug:
+                        print('neighbor: ' + neighbor[0])
+                    new_queue = PriorityQueue()
+                    for queue_node in queue.queue:
+                        if queue_node[1][0] == neighbor[0]:
+                            # od zacatku k neighbor
+                            proposed_new_cost = current_node[0] + neighbor[1]
+                            if debug:
+                                print('current cost to ' + neighbor[0], queue_node[0])
+                                print('cost from me to ' + neighbor[0], neighbor[1])
+                                print('cost from beginning to me', current_node[0])
+                                print('proposed cost from beginning to ' + neighbor[0], current_node[0] + neighbor[1])
+                                print('is it worth to change route? ', current_node[0] + neighbor[1] < queue_node[0])
+                            if proposed_new_cost < queue_node[0]:
+                                new_queue.put((proposed_new_cost, (queue_node[1][0], current_node[1][0])))
+                            else:
+                                new_queue.put(queue_node)
                         else:
                             new_queue.put(queue_node)
-                    else:
-                        new_queue.put(queue_node)
-                queue = new_queue
-            if debug:
-                print('NEW QUEUE: ' + str(queue.queue), end='\n\n\n')
-            # this node is fully mapped, mark it as visited
-            unvisited_nodes.remove(current_node[1][0])
-        return self.__backtrace(start, end, path_map) if backtrace else path_map
+                    queue = new_queue
+                if debug:
+                    print('NEW QUEUE: ' + str(queue.queue), end='\n\n\n')
+                # this node is fully mapped, mark it as visited
+                unvisited_nodes.remove(current_node[1][0])
+            # cache for future use
+            self.__cache[start] = path_map
+            return self.__backtrace(start, end, path_map) if backtrace else path_map
 
     def cost(self, *nodes, check_connections=False):
         """
         Calculates the cost of travel between all the specified nodes
         """
         cost = 0
+        # i.e. from liberec to liberec takes no time
+        if len(set(nodes)) == 1:
+            return 0
         for i, node in enumerate(nodes):
             if i + 1 == len(nodes):
                 break
