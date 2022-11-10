@@ -186,10 +186,10 @@ for line in sys.stdin:
     line = line.strip()
     # [0] - from | [1] - to | [2] - mode
     data = line.split(' ')
-    if data[2] == 'nejlepsi':
+    if data[2] == 'nejkratsi':
         result = distance_graph.dijkstra(data[0], data[1], backtrace=True)
         print(f'({time_graph.cost(*result[0])} min, {result[1]} km)', ' -> '.join(result[0]))
-    elif data[2] == 'nejkratsi':
+    elif data[2] == 'nejlepsi':
         result = time_graph.dijkstra(data[0], data[1], backtrace=True)
         print(f'({result[1]} min, {distance_graph.cost(*result[0])} km)', ' -> '.join(result[0]))
     else:
